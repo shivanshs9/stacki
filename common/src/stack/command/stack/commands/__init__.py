@@ -1182,16 +1182,18 @@ class DatabaseConnection:
 	this object (self.db).
 	"""
 
-	cache   = {}
+	cache = {}
 
 	def __init__(self, db, *, caching=True):
 		# self.database : object returned from orginal connect call
 		# self.link	: database cursor used by everyone else
 		if db:
 			self.database = db
+			self.name     = db.db.decode() # name of the database
 			self.link     = db.cursor()
 		else:
 			self.database = None
+			self.name     = None
 			self.link     = None
 
 		# Setup the global cache, new DatabaseConnections will all use
@@ -1199,7 +1201,15 @@ class DatabaseConnection:
 		# to override the optional CACHING arg.
 		#
 		# Note the cache is shared but the decision to cache is not.
-		
+		#
+		# Each database has a unique cache, this way table names don't
+		# need to be unique. Currently we use only one connection, but
+		# that may change (thought about it for the shadow database)
+		# hence the code.
+
+		if self.name not in DatabaseConnection.cache:
+			DatabaseConnection.cache[self.name] = {}
+
 		if os.environ.get('STACKCACHE'):
 			self.caching = str2bool(os.environ.get('STACKCACHE'))
 		else:
@@ -1214,8 +1224,8 @@ class DatabaseConnection:
 		self.clearCache()
 
 	def clearCache(self):
-		Debug('clearing cache of %d selects' % len(DatabaseConnection.cache))
-		DatabaseConnection.cache = {}
+		Debug('clearing cache of %d selects' % len(DatabaseConnection.cache[self.name]))
+		DatabaseConnection.cache[self.name] = {}
 
 	def select(self, command, args=None):
 		if not self.link:
@@ -1229,11 +1239,9 @@ class DatabaseConnection:
 			m.update(' '.join(str(arg) for arg in args).encode('utf-8'))
 		k = m.hexdigest()
 
-#		 print 'select', k, command
-		if k in DatabaseConnection.cache:
+		if k in DatabaseConnection.cache[self.name]:
 			Debug('select %s' % k)
-			rows = DatabaseConnection.cache[k]
-#			 print >> sys.stderr, '-\n%s\n%s\n' % (command, rows)
+			rows = DatabaseConnection.cache[self.name][k]
 		else:
 			try:
 				self.execute('select %s' % command, args)
@@ -1244,8 +1252,7 @@ class DatabaseConnection:
 				rows = []
 				
 			if self.caching:
-				DatabaseConnection.cache[k] = rows
-
+				DatabaseConnection.cache[self.name][k] = rows
 		return rows
 
 					
@@ -1256,10 +1263,14 @@ class DatabaseConnection:
 			self.clearCache()
 						
 		if self.link:
-			t0 = time.time()
-			result = self.link.execute(command, args)
-			t1 = time.time()
-			Debug('SQL EX: %.3f %s' % ((t1 - t0), command))
+			try:
+				t0 = time.time()
+				result = self.link.execute(command, args)
+				t1 = time.time()
+			except ProgrammingError:
+				Debug('SQL ERROR: %s' % self.link.mogrify(command, args))
+				raise ProgrammingError
+			Debug(f'SQL EX: %.4d rows in %.3fs <- %s' % (result, (t1 - t0), self.link.mogrify(command, args)))
 			return result
 		
 		return None
