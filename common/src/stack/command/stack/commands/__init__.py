@@ -72,7 +72,6 @@ def Debug(message, level=syslog.LOG_DEBUG):
 		Log(message, level)
 		sys.__stderr__.write('%s\n' % m)
 		
-Debug('__init__:commands')
 
 class OSArgumentProcessor:
 	"""An Interface class to add the ability to process os arguments."""
@@ -230,6 +229,7 @@ class NetworkArgumentProcessor:
 			netname = ''
 
 		return netname
+
 
 class SwitchArgumentProcessor:
 	"""An interface class to add the ability to process switch arguments."""
@@ -471,11 +471,11 @@ class HostArgumentProcessor:
 				retval = a['rank']
 			return retval
 
-		rank = sorted((h for h in hosts if h['rank'].isnumeric()), key = ranksort)
-		rank += sorted((h for h in hosts if not h['rank'].isnumeric()), key = ranksort)
+		rank = sorted((h for h in hosts if h['rank'].isnumeric()), key=ranksort)
+		rank += sorted((h for h in hosts if not h['rank'].isnumeric()), key=ranksort)
 
-		rack = sorted((h for h in rank if h['rack'].isnumeric()), key = racksort)
-		rack += sorted((h for h in rank if not h['rack'].isnumeric()), key = racksort)
+		rack = sorted((h for h in rank if h['rack'].isnumeric()), key=racksort)
+		rack += sorted((h for h in rank if not h['rack'].isnumeric()), key=racksort)
 
 		hosts = []
 		for r in rack:
@@ -1246,7 +1246,8 @@ class DatabaseConnection:
 			try:
 				self.execute('select %s' % command, args)
 				rows = self.fetchall()
-			except (OperationalError, ProgrammingError):
+			except OperationalError:
+				Debug('SQL ERROR: %s' % self.link.mogrify('select %s' % command, args))
 				# Permission error return the empty set
 				# Syntax errors throw exceptions
 				rows = []

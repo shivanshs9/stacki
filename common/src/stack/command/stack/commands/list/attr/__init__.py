@@ -262,39 +262,66 @@ class Command(stack.commands.Command,
 			for target in lookup[s]['fn']():
 				attributes[s][target] = {}
 
+			# Do a UNION select for the attributes in the cluster
+			# and shadow database. This is done to minimize the
+			# calls/context switches to the database. If the user
+			# doesn't have permission to access the shadow
+			# database, we fallback to just selecting out of the
+			# cluster database.
+
 			if var:
 				table = lookup[s]['table']
 				if table:
-					for (o, a, v) in self.db.select(
+					rows = self.db.select(
 						"""
-						t.name, a.attr, a.value from 
+						t.name, true, a.attr, a.value from
+						shadow.attributes a, %s t where
+						a.scope = %%s and a.scopeid = t.id
+						union select
+						t.name, false, a.attr, a.value from 
 						attributes a, %s t where
 						a.scope = %%s and a.scopeid = t.id
-						""" % table, s):
-						attributes[s][o][a] = (v, 'var', s)
-					if shadow:
-						for (o, a, v) in self.db.select(
+						""" % (table, table), (s, s))
+					if not rows:
+						rows = self.db.select(
 							"""
-							t.name, a.attr, a.value from
-							shadow.attributes a, %s t where
+							t.name, false, a.attr, a.value from 
+							attributes a, %s t where
 							a.scope = %%s and a.scopeid = t.id
-							""" % table, s):
+							""" % table, s)
+
+					for (o, x, a, v) in rows:
+						if not x:
 							attributes[s][o][a] = (v, 'var', s)
+					if shadow:
+						for (o, x, a, v) in rows:
+							if x:
+								attributes[s][o][a] = (v, 'var', s)
 				else:
 					o = target
-					for (a, v) in self.db.select(
+
+					rows = self.db.select(
 						"""
-						attr, value from attributes
+						true, attr, value from shadow.attributes
 						where scope = %s
-						""", s):
-						attributes[s][o][a] = (v, 'var', s)
-					if shadow:
-						for (a, v) in self.db.select(
+						union select 
+						false, attr, value from attributes
+						where scope = %s
+						""", (s, s))
+					if not rows:
+						rows = self.db.select(
 							"""
-							attr, value from shadow.attributes
+							false, attr, value from attributes
 							where scope = %s
-							""", s):
+							""", s)
+
+					for (x, a, v) in rows:
+						if not x:
 							attributes[s][o][a] = (v, 'var', s)
+					if shadow:
+						for (x, a, v) in rows:
+							if x:
+								attributes[s][o][a] = (v, 'var', s)
 
 			if const:
 				# Mix in any const attributes
