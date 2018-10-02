@@ -65,7 +65,7 @@ class Command(stack.commands.set.host.command):
 					select id from bootnames where name=%s and type=%s
 				)
 				where nodes.name=%s
-			""" % (req_action, req_type, host))
+			""", (req_action, req_type, host))
 
 		if req_sync:
 			self.command('sync.host.boot', hosts)
