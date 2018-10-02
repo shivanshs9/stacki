@@ -56,7 +56,7 @@ class Command(stack.commands.set.host.command):
 			[req_action, 'type=%s' % req_type ]
 		)) == 0:
 			raise CommandError(
-				self, f'bootaction "{req_action}"" does not exist'
+				self, f'bootaction "{req_action}" does not exist'
 			)
 
 		for host in hosts:
